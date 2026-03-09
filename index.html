@@ -253,14 +253,13 @@
         </div>
     </div>
 
-    <video id="hiddenVideo" style="display:none" muted playsinline crossorigin="anonymous"></video>
     <canvas id="processingCanvas" style="display:none"></canvas>
     <canvas id="noiseCanvas" style="display:none"></canvas>
 
     <script>
         // ==================== STATE ====================
         let selectedFiles = [];
-        let processedFiles = []; // { name, blob, url, origSize, finalSize }
+        let processedFiles = []; 
         let selectedMode = null;
         let overlayImage = null;
         let overlayImageEl = null;
@@ -302,9 +301,8 @@
         });
 
         function handleFilesSelect(files) {
-            // Se já tínhamos terminado um lote e o usuário jogou novos arquivos, reseta o visual automaticamente
             if (isFinished) {
-                resetAll(false); // Reseta silenciosamente sem rolar pra cima
+                resetAll(false); 
             }
 
             for (let i = 0; i < files.length; i++) {
@@ -477,7 +475,6 @@
         function applyImageOverlay(ctx, w, h) {
             if (!overlayImageEl || !overlayImageEl.complete) return;
             ctx.save();
-            // Solicitado opacidade para 6%
             ctx.globalAlpha = 0.06; 
             const imgW = overlayImageEl.naturalWidth;
             const imgH = overlayImageEl.naturalHeight;
@@ -545,14 +542,13 @@
             isProcessing = true;
             isFinished = false;
 
-            // UI Adjustments
             const btn = document.getElementById('processBtn');
             btn.disabled = true;
             btn.textContent = '⏳ PROCESSANDO...';
             btn.classList.add('opacity-50');
 
             document.getElementById('step3').classList.remove('hidden');
-            document.getElementById('step4').classList.remove('hidden'); // Mostra a área de resultados
+            document.getElementById('step4').classList.remove('hidden'); 
             document.getElementById('resultsEmoji').textContent = '⏳';
             document.getElementById('resultsTitle').textContent = 'Processando Lote...';
             document.getElementById('processingSpinner').style.display = 'inline-block';
@@ -563,7 +559,6 @@
 
             addLog(`🚀 Iniciando lote com ${selectedFiles.length} vídeo(s)`, 'info');
 
-            // Pre-load overlay if needed
             if (selectedMode === 'image' && overlayImageEl) {
                 await new Promise((resolve) => {
                     if (overlayImageEl.complete) resolve();
@@ -585,7 +580,6 @@
                 }
             }
 
-            // Finalizado
             isProcessing = false;
             isFinished = true;
             document.getElementById('processingSpinner').style.display = 'none';
@@ -618,10 +612,14 @@
                 addLog(`▶ [${currentIndex}/${totalFiles}] Processando: ${file.name}`, 'info');
                 updateProgress(2, `Carregando ${file.name}...`);
                 
-                const video = document.getElementById('hiddenVideo');
+                // CRIAR ELEMENTO DE VÍDEO NOVO (não usar global pra resetar AudioContext)
+                const video = document.createElement('video');
+                video.playsInline = true;
+                video.crossOrigin = 'anonymous';
+                video.muted = true; // mutado durante o carregamento
+                
                 const videoURL = URL.createObjectURL(file);
                 video.src = videoURL;
-                video.muted = true;
                 
                 try {
                     await new Promise((res, rej) => {
@@ -660,9 +658,8 @@
                     let targetBitsPerSec;
                     
                     if (needsSizeReduction) {
-                        // Mirando em 98MB na primeira passada
                         targetBitsPerSec = Math.floor((98 * 8 * 1024 * 1024) / duration);
-                        targetBitsPerSec = Math.max(targetBitsPerSec, 500000); // min 500kbps
+                        targetBitsPerSec = Math.max(targetBitsPerSec, 500000); 
                         addLog(`⚠️ > 100MB. Bitrate alvo: ${(targetBitsPerSec / 1000).toFixed(0)}kbps`, 'warn');
                     } else {
                         targetBitsPerSec = Math.min(Math.floor((origFileSizeMB * 8 * 1024 * 1024) / duration), 8000000);
@@ -677,11 +674,16 @@
                     const stream = canvas.captureStream(30);
                     let audioCtx = null;
                     try {
-                        audioCtx = new AudioContext();
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        audioCtx = new AudioContextClass();
                         const source = audioCtx.createMediaElementSource(video);
                         const dest = audioCtx.createMediaStreamDestination();
-                        source.connect(dest); source.connect(audioCtx.destination);
+                        
+                        // IMPORTANTE: Conecta a source na destination stream (captura) 
+                        // Mas NÃO conecta no `audioCtx.destination` (alto-falantes do PC)
+                        source.connect(dest); 
                         dest.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+                        addLog('🔊 Áudio capturado corretamente', 'info');
                     } catch (e) {
                         addLog('⚠️ Áudio não pôde ser capturado. Será mudo.', 'warn');
                     }
@@ -698,7 +700,11 @@
                     const recorderDone = new Promise(r => { recorder.onstop = r; });
 
                     recorder.start(100);
-                    video.currentTime = 0; video.muted = true;
+                    
+                    video.currentTime = 0; 
+                    // Tira do mudo para o AudioContext receber o sinal!
+                    // (Ele não tocará na caixa de som porque o source não foi plugado nela)
+                    video.muted = false; 
                     
                     updateProgress(12, 'Processando frames...');
                     await video.play();
@@ -729,7 +735,7 @@
                     updateProgress(92, 'Finalizando gravação...');
                     recorder.stop();
                     video.pause();
-                    if (audioCtx) { try { audioCtx.close(); } catch(e) {} }
+                    if (audioCtx && audioCtx.state !== 'closed') { try { audioCtx.close(); } catch(e) {} }
                     await recorderDone;
                     
                     let finalBlob = new Blob(chunks, { type: 'video/mp4' });
@@ -738,13 +744,13 @@
                     // SEGUNDA PASSADA SE AINDA MAIOR QUE 100MB
                     if (finalBlob.size > 100 * 1024 * 1024) {
                         addLog('⚠️ Ainda > 100MB! Reprocessando com bitrate reduzido (alvo ~95MB)...', 'warn');
-                        // Mira em 95MB
                         const newBitrate = Math.floor(targetBitsPerSec * (95 / parseFloat(finalSizeMB)));
                         
                         const tempVideo = document.createElement('video');
                         const tempURL = URL.createObjectURL(finalBlob);
                         tempVideo.src = tempURL;
                         tempVideo.muted = true;
+                        tempVideo.playsInline = true;
 
                         await new Promise(r => { tempVideo.onloadedmetadata = r; tempVideo.load(); });
                         await new Promise(r => { if (tempVideo.readyState >= 2) r(); else tempVideo.oncanplay = r; });
@@ -754,6 +760,17 @@
                         const tempCtx = tempCanvas.getContext('2d');
                         const tempStream = tempCanvas.captureStream(30);
 
+                        // Precisamos capturar o áudio na segunda passada também
+                        let tempAudioCtx = null;
+                        try {
+                            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                            tempAudioCtx = new AudioContextClass();
+                            const tempSource = tempAudioCtx.createMediaElementSource(tempVideo);
+                            const tempDest = tempAudioCtx.createMediaStreamDestination();
+                            tempSource.connect(tempDest);
+                            tempDest.stream.getAudioTracks().forEach(t => tempStream.addTrack(t));
+                        } catch(e) {}
+
                         const tempRecorder = new MediaRecorder(tempStream, { mimeType, videoBitsPerSecond: newBitrate });
                         const tempChunks = [];
                         tempRecorder.ondataavailable = e => { if (e.data.size > 0) tempChunks.push(e.data); };
@@ -761,6 +778,7 @@
 
                         tempRecorder.start(100);
                         tempVideo.currentTime = 0;
+                        tempVideo.muted = false; // Tira do mudo para o fluxo de áudio rolar
                         await tempVideo.play();
 
                         await new Promise(res => {
@@ -774,6 +792,7 @@
 
                         tempRecorder.stop();
                         tempVideo.pause();
+                        if (tempAudioCtx && tempAudioCtx.state !== 'closed') { try { tempAudioCtx.close(); } catch(e) {} }
                         await tempDone;
 
                         finalBlob = new Blob(tempChunks, { type: 'video/mp4' });
@@ -842,7 +861,7 @@
             processedFiles = [];
             selectedMode = null;
             
-            if (!scroll) overlayImage = null; // Mantem a imagem caso seja um reset sutil? Não, resetamos.
+            if (!scroll) overlayImage = null;
             
             fileInput.value = '';
             document.getElementById('selectedFilesContainer').classList.add('hidden');
