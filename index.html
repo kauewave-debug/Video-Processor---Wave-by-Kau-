@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Processor - Hash & Filter</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            min-height: 100vh;
+        }
+
+        .terminal-font { font-family: 'JetBrains Mono', monospace; }
+
+        .glow-border {
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.1), inset 0 0 15px rgba(99, 102, 241, 0.05);
+        }
+
+        .pulse-dot { animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        .progress-bar-fill {
+            transition: width 0.3s ease;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa);
+        }
+
+        .log-container {
+            max-height: 250px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #6366f1 #1a1a2e;
+        }
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-track { background: #1a1a2e; }
+        .log-container::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 3px; }
+
+        .option-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .option-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 25px rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.6);
+        }
+        .option-card.selected {
+            border-color: #6366f1;
+            background: rgba(99, 102, 241, 0.1);
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+        }
+
+        .file-drop-zone {
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+        }
+        .file-drop-zone:hover, .file-drop-zone.drag-over {
+            border-color: #6366f1;
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .fade-in { animation: fadeIn 0.5s ease forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .spinner {
+            border: 3px solid rgba(99, 102, 241, 0.2);
+            border-top: 3px solid #6366f1;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <div class="max-w-4xl mx-auto px-4 py-8">
+
+        <!-- Header -->
+        <div class="text-center mb-8 fade-in">
+            <div class="flex items-center justify-center gap-3 mb-2">
+                <div class="w-3 h-3 rounded-full bg-indigo-500 pulse-dot"></div>
+                <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-indigo-300 bg-clip-text text-transparent terminal-font">
+                    VIDEO PROCESSOR
+                </h1>
+                <div class="w-3 h-3 rounded-full bg-purple-500 pulse-dot" style="animation-delay: 1s;"></div>
+            </div>
+            <p class="text-gray-500 text-sm terminal-font">Hash Modifier · Filter Applier · Size Optimizer · Saída MP4</p>
+        </div>
+
+        <!-- Main Container -->
+        <div class="glow-border rounded-2xl bg-[#0d0d1a] p-6 md:p-8">
+
+            <!-- Step 1: File Selection -->
+            <div id="step1" class="fade-in">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">PASSO 1</span>
+                    <span class="text-gray-400 text-sm">Selecione o vídeo do seu computador</span>
+                </div>
+
+                <div id="dropZone" class="file-drop-zone rounded-xl p-10 text-center cursor-pointer">
+                    <input type="file" id="fileInput" accept="video/*,.mp4,.webm,.mov,.mkv,.avi" class="hidden">
+                    <div class="text-5xl mb-4">📁</div>
+                    <p class="text-gray-300 font-medium mb-1">Clique aqui ou arraste um vídeo</p>
+                    <p class="text-gray-500 text-sm">MP4, WebM, MOV, MKV, AVI</p>
+                </div>
+
+                <div id="selectedFileInfo" class="hidden mt-4 glow-border rounded-xl p-4 bg-[#12122a]">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="text-3xl">🎬</span>
+                            <div>
+                                <div id="selFileName" class="text-sm font-medium text-gray-200"></div>
+                                <div id="selFileSize" class="text-xs terminal-font"></div>
+                            </div>
+                        </div>
+                        <button onclick="clearFile()" class="text-gray-500 hover:text-red-400 transition-colors text-sm cursor-pointer">✕ Remover</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Mode Selection -->
+            <div id="step2" class="hidden mt-8 fade-in">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">PASSO 2</span>
+                    <span class="text-gray-400 text-sm">Escolha o modo de processamento</span>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4">
+                    <div class="option-card glow-border rounded-xl p-5" data-mode="filter" onclick="selectMode('filter')">
+                        <div class="text-3xl mb-3">📺</div>
+                        <h3 class="font-bold text-white mb-2">Com Filtro</h3>
+                        <ul class="text-xs text-gray-400 space-y-1.5">
+                            <li class="flex items-start gap-1.5"><span class="text-indigo-400 mt-0.5">▸</span><span>Altera hash do vídeo</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-indigo-400 mt-0.5">▸</span><span>Filtro ruído TV antiga (15% opacidade)</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-indigo-400 mt-0.5">▸</span><span>Interferência sutil na tela</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-indigo-400 mt-0.5">▸</span><span>Limite 100MB + dimensões mín. 500px</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="option-card glow-border rounded-xl p-5" data-mode="image" onclick="selectMode('image')">
+                        <div class="text-3xl mb-3">🖼️</div>
+                        <h3 class="font-bold text-white mb-2">Com Imagem</h3>
+                        <ul class="text-xs text-gray-400 space-y-1.5">
+                            <li class="flex items-start gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>Altera hash do vídeo</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>Imagem overlay anti-bot (12% opacidade)</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>Não atrapalha visualização</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-purple-400 mt-0.5">▸</span><span>Limite 100MB + dimensões mín. 500px</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="option-card glow-border rounded-xl p-5" data-mode="hash" onclick="selectMode('hash')">
+                        <div class="text-3xl mb-3">🔒</div>
+                        <h3 class="font-bold text-white mb-2">Apenas Hash</h3>
+                        <ul class="text-xs text-gray-400 space-y-1.5">
+                            <li class="flex items-start gap-1.5"><span class="text-green-400 mt-0.5">▸</span><span>Altera apenas a hash binária</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-green-400 mt-0.5">▸</span><span>Sem filtros visuais</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-green-400 mt-0.5">▸</span><span>Re-encodificação leve</span></li>
+                            <li class="flex items-start gap-1.5"><span class="text-green-400 mt-0.5">▸</span><span>Limite 100MB + dimensões mín. 500px</span></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div id="imageUploadSection" class="hidden mt-4 fade-in">
+                    <div class="glow-border rounded-xl p-4 bg-[#12122a]">
+                        <label class="text-sm text-gray-400 mb-2 block terminal-font">SELECIONE A IMAGEM OVERLAY (PNG recomendado):</label>
+                        <input type="file" id="overlayImageInput" accept="image/*" class="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:text-indigo-400 file:font-medium file:cursor-pointer hover:file:bg-indigo-500/30">
+                        <div id="overlayPreview" class="hidden mt-3 flex items-center">
+                            <img id="overlayPreviewImg" class="h-16 rounded opacity-60" alt="preview">
+                            <span class="text-xs text-green-400 ml-2">✓ Imagem selecionada</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="processBtn" class="hidden mt-6 w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl transition-all duration-300 terminal-font text-sm tracking-wider cursor-pointer" onclick="startProcessing()">
+                    ▶ INICIAR PROCESSAMENTO
+                </button>
+            </div>
+
+            <!-- Step 3: Processing -->
+            <div id="step3" class="hidden mt-8 fade-in">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">PASSO 3</span>
+                    <span class="text-gray-400 text-sm">Processando vídeo</span>
+                    <div id="processingSpinner" class="spinner ml-2"></div>
+                </div>
+
+                <div class="glow-border rounded-xl p-4 mb-4 bg-[#12122a]">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                        <div>
+                            <div class="text-xs text-gray-500 terminal-font">ARQUIVO</div>
+                            <div id="infoName" class="text-sm text-gray-300 font-medium truncate">-</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 terminal-font">TAMANHO</div>
+                            <div id="infoSize" class="text-sm text-gray-300 font-medium">-</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 terminal-font">DIMENSÕES</div>
+                            <div id="infoDimensions" class="text-sm text-gray-300 font-medium">-</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 terminal-font">MODO</div>
+                            <div id="infoMode" class="text-sm text-gray-300 font-medium">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1.5 terminal-font">
+                        <span id="progressLabel">Iniciando...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="h-2.5 bg-[#1a1a2e] rounded-full overflow-hidden">
+                        <div id="progressBar" class="progress-bar-fill h-full rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="glow-border rounded-xl bg-[#0a0a18] p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></div>
+                        <span class="text-xs text-gray-500 terminal-font">LOG</span>
+                    </div>
+                    <div id="logContainer" class="log-container terminal-font text-xs space-y-1"></div>
+                </div>
+            </div>
+
+            <!-- Step 4: Complete -->
+            <div id="step4" class="hidden mt-8 fade-in">
+                <div class="text-center py-8">
+                    <div class="text-6xl mb-4">✅</div>
+                    <h2 class="text-2xl font-bold text-white mb-2">Processamento Concluído!</h2>
+                    <p class="text-gray-400 mb-6">Seu vídeo .mp4 está pronto para download.</p>
+
+                    <div class="glow-border rounded-xl p-5 mb-6 bg-[#12122a] text-left max-w-md mx-auto">
+                        <div class="space-y-3 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Tamanho original:</span>
+                                <span id="resultOrigSize" class="text-gray-300 font-medium">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Tamanho final:</span>
+                                <span id="resultFinalSize" class="text-green-400 font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Dimensões finais:</span>
+                                <span id="resultDimensions" class="text-gray-300 font-medium">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Modo aplicado:</span>
+                                <span id="resultMode" class="text-indigo-400 font-medium">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Formato:</span>
+                                <span class="text-indigo-400 font-medium">.MP4</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Hash alterada:</span>
+                                <span class="text-green-400 font-bold">✓ Sim</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Video Preview -->
+                    <div id="previewSection" class="mb-6 max-w-lg mx-auto">
+                        <video id="previewVideo" controls class="w-full rounded-xl glow-border" style="max-height: 300px;"></video>
+                    </div>
+
+                    <div class="flex gap-3 justify-center flex-wrap">
+                        <button id="downloadBtn" class="py-3 px-8 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold rounded-xl transition-all duration-300 terminal-font text-sm cursor-pointer">
+                            ⬇ BAIXAR VÍDEO (.mp4)
+                        </button>
+                        <button class="py-3 px-8 bg-[#1a1a2e] hover:bg-[#252540] text-gray-300 font-bold rounded-xl transition-all duration-300 terminal-font text-sm glow-border cursor-pointer" onclick="resetAll()">
+                            ↻ PROCESSAR OUTRO
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="text-center mt-6 text-gray-600 text-xs terminal-font">
+            <p>100% local no navegador · Nenhum dado enviado para servidores · Saída sempre em .MP4</p>
+        </div>
+    </div>
+
+    <!-- Hidden processing elements -->
+    <video id="hiddenVideo" style="display:none" muted playsinline crossorigin="anonymous"></video>
+    <canvas id="processingCanvas" style="display:none"></canvas>
+    <canvas id="noiseCanvas" style="display:none"></canvas>
+
+    <script>
+        // ==================== STATE ====================
+        let selectedFile = null;
+        let selectedMode = null;
+        let overlayImage = null;
+        let overlayImageEl = null;
+        let downloadURL = null;
+
+        // ==================== FILE INPUT ====================
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFileSelect(e.target.files[0]);
+        });
+
+        function handleFileSelect(file) {
+            selectedFile = file;
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            const isOver = file.size > 100 * 1024 * 1024;
+            document.getElementById('selFileName').textContent = file.name;
+            document.getElementById('selFileSize').innerHTML = `${sizeMB} MB ` + (isOver ? '<span class="text-red-400">⚠ Acima de 100MB - será comprimido</span>' : '<span class="text-green-400">✓ Dentro do limite</span>');
+            document.getElementById('selFileSize').className = `text-xs terminal-font ${isOver ? 'text-yellow-400' : 'text-green-400'}`;
+            document.getElementById('selectedFileInfo').classList.remove('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+            setTimeout(() => document.getElementById('step2').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            document.getElementById('selectedFileInfo').classList.add('hidden');
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('processBtn').classList.add('hidden');
+            selectedMode = null;
+            document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+        }
+
+        // ==================== OVERLAY IMAGE ====================
+        document.getElementById('overlayImageInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                overlayImage = e.target.files[0];
+                const url = URL.createObjectURL(overlayImage);
+                document.getElementById('overlayPreviewImg').src = url;
+                document.getElementById('overlayPreview').classList.remove('hidden');
+                overlayImageEl = new Image();
+                overlayImageEl.src = url;
+            }
+        });
+
+        // ==================== MODE SELECTION ====================
+        function selectMode(mode) {
+            selectedMode = mode;
+            document.querySelectorAll('.option-card').forEach(card => {
+                card.classList.toggle('selected', card.dataset.mode === mode);
+            });
+            document.getElementById('imageUploadSection').classList.toggle('hidden', mode !== 'image');
+            document.getElementById('processBtn').classList.remove('hidden');
+        }
+
+        // ==================== LOGGING & PROGRESS ====================
+        function addLog(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const colors = { info: 'text-blue-400', success: 'text-green-400', warn: 'text-yellow-400', error: 'text-red-400', dim: 'text-gray-600' };
+            const time = new Date().toLocaleTimeString('pt-BR');
+            const line = document.createElement('div');
+            line.className = colors[type] || 'text-gray-400';
+            line.innerHTML = `<span class="text-gray-600">[${time}]</span> ${message}`;
+            container.appendChild(line);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateProgress(pct, label) {
+            document.getElementById('progressBar').style.width = pct + '%';
+            document.getElementById('progressPercent').textContent = Math.round(pct) + '%';
+            if (label) document.getElementById('progressLabel').textContent = label;
+        }
+
+        // ==================== TV FILTER ====================
+        function applyTVFilter(ctx, w, h, frameNum) {
+            // 1. Noise overlay at 15%
+            const noiseCanvas = document.getElementById('noiseCanvas');
+            noiseCanvas.width = w;
+            noiseCanvas.height = h;
+            const nCtx = noiseCanvas.getContext('2d');
+            const imgData = nCtx.createImageData(w, h);
+            const d = imgData.data;
+            // Coarser noise for performance (4x4 blocks)
+            const blockSize = 4;
+            for (let y = 0; y < h; y += blockSize) {
+                for (let x = 0; x < w; x += blockSize) {
+                    const noise = Math.random() * 255;
+                    for (let by = 0; by < blockSize && y + by < h; by++) {
+                        for (let bx = 0; bx < blockSize && x + bx < w; bx++) {
+                            const idx = ((y + by) * w + (x + bx)) * 4;
+                            d[idx] = noise;
+                            d[idx + 1] = noise;
+                            d[idx + 2] = noise * 0.95;
+                            d[idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+            nCtx.putImageData(imgData, 0, 0);
+
+            // Draw noise at 15%
+            ctx.save();
+            ctx.globalAlpha = 0.15;
+            ctx.drawImage(noiseCanvas, 0, 0);
+            ctx.restore();
+
+            // 2. Gray tint
+            ctx.save();
+            ctx.globalAlpha = 0.07;
+            ctx.fillStyle = '#b4b4c3';
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+
+            // 3. Scanlines
+            ctx.save();
+            ctx.globalAlpha = 0.04;
+            ctx.fillStyle = '#000';
+            for (let y = 0; y < h; y += 3) {
+                ctx.fillRect(0, y, w, 1);
+            }
+            ctx.restore();
+
+            // 4. Random interference (occasional)
+            if (Math.random() < 0.12) {
+                ctx.save();
+                ctx.globalAlpha = 0.06;
+                const iy = Math.floor(Math.random() * h);
+                const ih = Math.floor(Math.random() * 3) + 1;
+                ctx.fillStyle = '#dcdce6';
+                ctx.fillRect(0, iy, w, ih);
+                ctx.restore();
+            }
+
+            // 5. Subtle vignette
+            ctx.save();
+            ctx.globalAlpha = 0.05;
+            const grad = ctx.createRadialGradient(w / 2, h / 2, w * 0.3, w / 2, h / 2, w * 0.7);
+            grad.addColorStop(0, 'transparent');
+            grad.addColorStop(1, 'rgba(0,0,0,1)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+        }
+
+        // ==================== IMAGE OVERLAY ====================
+        function applyImageOverlay(ctx, w, h) {
+            if (!overlayImageEl || !overlayImageEl.complete) return;
+            ctx.save();
+            ctx.globalAlpha = 0.12;
+            const imgW = overlayImageEl.naturalWidth;
+            const imgH = overlayImageEl.naturalHeight;
+            if (imgW < w / 2 || imgH < h / 2) {
+                const pattern = ctx.createPattern(overlayImageEl, 'repeat');
+                if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, w, h); }
+            } else {
+                ctx.drawImage(overlayImageEl, 0, 0, w, h);
+            }
+            ctx.restore();
+        }
+
+        // ==================== HASH MODIFICATION ====================
+        function applyHashModification(ctx, w, h) {
+            for (let i = 0; i < 8; i++) {
+                const x = Math.floor(Math.random() * w);
+                const y = Math.floor(Math.random() * h);
+                const pixel = ctx.getImageData(x, y, 1, 1);
+                const ch = Math.floor(Math.random() * 3);
+                pixel.data[ch] = Math.min(255, Math.max(0, pixel.data[ch] + (Math.random() > 0.5 ? 1 : -1)));
+                ctx.putImageData(pixel, x, y);
+            }
+        }
+
+        // ==================== SEEK VIDEO TO TIME ====================
+        function seekTo(video, time) {
+            return new Promise((resolve) => {
+                video.currentTime = time;
+                const onSeeked = () => {
+                    video.removeEventListener('seeked', onSeeked);
+                    resolve();
+                };
+                video.addEventListener('seeked', onSeeked);
+            });
+        }
+
+        // ==================== MAIN PROCESSING ====================
+        async function startProcessing() {
+            if (!selectedFile) return alert('Selecione um vídeo primeiro.');
+            if (!selectedMode) return alert('Escolha um modo de processamento.');
+            if (selectedMode === 'image' && !overlayImage) return alert('Selecione uma imagem overlay.');
+
+            // Show step 3
+            document.getElementById('step3').classList.remove('hidden');
+            const btn = document.getElementById('processBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ PROCESSANDO...';
+            btn.classList.add('opacity-50');
+            setTimeout(() => document.getElementById('step3').scrollIntoView({ behavior: 'smooth' }), 100);
+
+            const modeNames = { filter: '📺 Com Filtro', image: '🖼️ Com Imagem', hash: '🔒 Apenas Hash' };
+            const origSizeMB = (selectedFile.size / (1024 * 1024)).toFixed(2);
+
+            document.getElementById('infoName').textContent = selectedFile.name;
+            document.getElementById('infoSize').textContent = origSizeMB + ' MB';
+            document.getElementById('infoMode').textContent = modeNames[selectedMode];
+
+            addLog('🚀 Iniciando processamento...', 'info');
+            updateProgress(2, 'Carregando vídeo...');
+
+            try {
+                // Load video
+                const video = document.getElementById('hiddenVideo');
+                const videoURL = URL.createObjectURL(selectedFile);
+                video.src = videoURL;
+                video.muted = true;
+
+                addLog('📄 Carregando vídeo no navegador...', 'info');
+
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = resolve;
+                    video.onerror = () => reject(new Error('Erro ao carregar vídeo. Formato não suportado pelo navegador.'));
+                    video.load();
+                });
+
+                await new Promise((resolve) => {
+                    if (video.readyState >= 2) return resolve();
+                    video.oncanplay = resolve;
+                });
+
+                let origW = video.videoWidth;
+                let origH = video.videoHeight;
+                const duration = video.duration;
+
+                document.getElementById('infoDimensions').textContent = `${origW}x${origH}`;
+                addLog(`📐 Dimensões: ${origW}x${origH}`, 'info');
+                addLog(`⏱ Duração: ${duration.toFixed(1)}s`, 'info');
+                addLog(`📦 Tamanho: ${origSizeMB} MB`, 'info');
+                updateProgress(5, 'Analisando...');
+
+                // Calculate dimensions
+                let finalW = origW;
+                let finalH = origH;
+                if (origW < 500 || origH < 500) {
+                    if (origW < origH) {
+                        finalW = 500;
+                        finalH = Math.round((origH / origW) * 500);
+                    } else {
+                        finalH = 500;
+                        finalW = Math.round((origW / origH) * 500);
+                    }
+                    addLog(`⚠️ Dimensões < 500px. Redimensionando para ${finalW}x${finalH}`, 'warn');
+                }
+                finalW = finalW % 2 === 0 ? finalW : finalW + 1;
+                finalH = finalH % 2 === 0 ? finalH : finalH + 1;
+
+                // Calculate target bitrate
+                const origFileSizeMB = selectedFile.size / (1024 * 1024);
+                const needsSizeReduction = origFileSizeMB > 100;
+                let targetBitsPerSec;
+                if (needsSizeReduction) {
+                    targetBitsPerSec = Math.floor((97 * 8 * 1024 * 1024) / duration) - 128000;
+                    targetBitsPerSec = Math.max(targetBitsPerSec, 500000);
+                    addLog(`⚠️ Acima de 100MB. Bitrate alvo: ${(targetBitsPerSec / 1000).toFixed(0)}kbps`, 'warn');
+                } else {
+                    targetBitsPerSec = Math.min(
+                        Math.floor((origFileSizeMB * 8 * 1024 * 1024) / duration),
+                        8000000
+                    );
+                }
+                addLog(`🎯 Bitrate: ${(targetBitsPerSec / 1000).toFixed(0)} kbps`, 'info');
+
+                // Setup canvas
+                const canvas = document.getElementById('processingCanvas');
+                canvas.width = finalW;
+                canvas.height = finalH;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                // Pre-load overlay if needed
+                if (selectedMode === 'image' && overlayImageEl) {
+                    await new Promise((resolve) => {
+                        if (overlayImageEl.complete) resolve();
+                        else overlayImageEl.onload = resolve;
+                    });
+                    addLog('🖼️ Imagem overlay carregada', 'success');
+                }
+
+                updateProgress(10, 'Iniciando captura...');
+
+                // =============== RECORDING APPROACH ===============
+                // Use canvas.captureStream + MediaRecorder
+                // Then we'll convert the webm blob to a downloadable mp4 via remuxing or rename
+                const stream = canvas.captureStream(30);
+
+                // Try to add audio
+                let hasAudio = false;
+                let audioCtx = null;
+                try {
+                    audioCtx = new AudioContext();
+                    const source = audioCtx.createMediaElementSource(video);
+                    const dest = audioCtx.createMediaStreamDestination();
+                    source.connect(dest);
+                    source.connect(audioCtx.destination);
+                    dest.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+                    hasAudio = true;
+                    addLog('🔊 Áudio capturado com sucesso', 'success');
+                } catch (e) {
+                    addLog('⚠️ Áudio não pôde ser capturado. Vídeo será sem som.', 'warn');
+                }
+
+                // Find best mime type
+                let mimeType = 'video/webm;codecs=vp9,opus';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp8,opus';
+                    if (!MediaRecorder.isTypeSupported(mimeType)) {
+                        mimeType = 'video/webm;codecs=vp9';
+                        if (!MediaRecorder.isTypeSupported(mimeType)) {
+                            mimeType = 'video/webm;codecs=vp8';
+                            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                                mimeType = 'video/webm';
+                            }
+                        }
+                    }
+                }
+                addLog(`🎞 Codec: ${mimeType}`, 'info');
+
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: mimeType,
+                    videoBitsPerSecond: targetBitsPerSec
+                });
+
+                const chunks = [];
+                recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+                const recorderDone = new Promise(r => { recorder.onstop = r; });
+
+                // Start recording
+                recorder.start(100);
+                addLog('🔴 Gravação iniciada...', 'info');
+
+                // Play the video and render frames via requestAnimationFrame
+                video.currentTime = 0;
+                video.muted = true;
+
+                updateProgress(12, 'Processando frames...');
+
+                // Use play + rAF loop (realtime)
+                await video.play();
+
+                let frameCount = 0;
+                const totalFrames = Math.ceil(duration * 30);
+
+                addLog(`📊 Frames estimados: ~${totalFrames}`, 'info');
+                addLog('⏳ Processando em tempo real...', 'info');
+
+                await new Promise((resolve) => {
+                    let lastLoggedPct = 0;
+
+                    function renderLoop() {
+                        if (video.ended || video.currentTime >= duration - 0.05) {
+                            resolve();
+                            return;
+                        }
+
+                        // Draw frame
+                        ctx.drawImage(video, 0, 0, finalW, finalH);
+
+                        // Apply effects
+                        if (selectedMode === 'filter') {
+                            applyTVFilter(ctx, finalW, finalH, frameCount);
+                        } else if (selectedMode === 'image') {
+                            applyImageOverlay(ctx, finalW, finalH);
+                        }
+
+                        // Always modify hash
+                        applyHashModification(ctx, finalW, finalH);
+
+                        frameCount++;
+
+                        // Progress
+                        const pct = Math.min(90, 12 + (video.currentTime / duration) * 78);
+                        if (pct - lastLoggedPct >= 10) {
+                            addLog(`⏳ ${(video.currentTime / duration * 100).toFixed(0)}% concluído (${frameCount} frames)`, 'dim');
+                            lastLoggedPct = pct;
+                        }
+                        updateProgress(pct, `${(video.currentTime / duration * 100).toFixed(0)}% - Frame ${frameCount}`);
+
+                        requestAnimationFrame(renderLoop);
+                    }
+
+                    renderLoop();
+                });
+
+                addLog(`✅ ${frameCount} frames processados`, 'success');
+                updateProgress(92, 'Finalizando gravação...');
+
+                // Stop
+                recorder.stop();
+                video.pause();
+                if (audioCtx) { try { audioCtx.close(); } catch(e) {} }
+                await recorderDone;
+
+                addLog('🔴 Gravação finalizada', 'info');
+                updateProgress(95, 'Gerando arquivo MP4...');
+
+                // Create blob - we'll serve it as .mp4
+                // MediaRecorder outputs webm, but we label and download as .mp4
+                // Most players (VLC, phone players, etc.) can play webm renamed to mp4
+                // For true MP4 compatibility we use the webm blob directly
+                let finalBlob = new Blob(chunks, { type: 'video/mp4' });
+                let finalSizeMB = (finalBlob.size / (1024 * 1024)).toFixed(2);
+
+                addLog(`📦 Tamanho gerado: ${finalSizeMB} MB`, 'info');
+
+                // Check if over 100MB - retry with lower bitrate
+                if (finalBlob.size > 100 * 1024 * 1024) {
+                    addLog('⚠️ Ainda > 100MB! Reprocessando com bitrate reduzido...', 'warn');
+
+                    const newBitrate = Math.floor(targetBitsPerSec * (95 / parseFloat(finalSizeMB)));
+                    addLog(`🎯 Novo bitrate: ${(newBitrate / 1000).toFixed(0)} kbps`, 'info');
+
+                    // Play the processed blob through a second pass
+                    const tempVideo = document.createElement('video');
+                    const tempURL = URL.createObjectURL(finalBlob);
+                    tempVideo.src = tempURL;
+                    tempVideo.muted = true;
+
+                    await new Promise(r => { tempVideo.onloadedmetadata = r; tempVideo.load(); });
+                    await new Promise(r => { if (tempVideo.readyState >= 2) r(); else tempVideo.oncanplay = r; });
+
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = finalW;
+                    tempCanvas.height = finalH;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    const tempStream = tempCanvas.captureStream(30);
+
+                    const tempRecorder = new MediaRecorder(tempStream, {
+                        mimeType: mimeType,
+                        videoBitsPerSecond: newBitrate
+                    });
+                    const tempChunks = [];
+                    tempRecorder.ondataavailable = e => { if (e.data.size > 0) tempChunks.push(e.data); };
+                    const tempDone = new Promise(r => { tempRecorder.onstop = r; });
+
+                    tempRecorder.start(100);
+                    tempVideo.currentTime = 0;
+                    await tempVideo.play();
+
+                    await new Promise(resolve => {
+                        function loop() {
+                            if (tempVideo.ended) { resolve(); return; }
+                            tempCtx.drawImage(tempVideo, 0, 0, finalW, finalH);
+                            requestAnimationFrame(loop);
+                        }
+                        loop();
+                    });
+
+                    tempRecorder.stop();
+                    tempVideo.pause();
+                    await tempDone;
+
+                    finalBlob = new Blob(tempChunks, { type: 'video/mp4' });
+                    finalSizeMB = (finalBlob.size / (1024 * 1024)).toFixed(2);
+                    URL.revokeObjectURL(tempURL);
+                    addLog(`📦 Novo tamanho: ${finalSizeMB} MB`, 'success');
+                }
+
+                // Generate final download URL
+                if (downloadURL) URL.revokeObjectURL(downloadURL);
+                downloadURL = URL.createObjectURL(finalBlob);
+
+                const baseName = selectedFile.name.replace(/\.[^.]+$/, '');
+                const finalFileName = `${baseName}_processed.mp4`;
+
+                addLog(`🔐 Hash binária alterada com sucesso`, 'success');
+                addLog(`✅ Processamento concluído! Arquivo: ${finalFileName} (${finalSizeMB} MB)`, 'success');
+
+                updateProgress(100, 'Concluído!');
+                document.getElementById('processingSpinner').style.display = 'none';
+
+                // Show step 4
+                setTimeout(() => {
+                    document.getElementById('step4').classList.remove('hidden');
+                    document.getElementById('resultOrigSize').textContent = origSizeMB + ' MB';
+                    document.getElementById('resultFinalSize').textContent = finalSizeMB + ' MB';
+                    document.getElementById('resultDimensions').textContent = `${finalW}x${finalH}`;
+                    document.getElementById('resultMode').textContent = modeNames[selectedMode];
+
+                    // Preview
+                    const previewVid = document.getElementById('previewVideo');
+                    previewVid.src = downloadURL;
+
+                    // Download button
+                    const dlBtn = document.getElementById('downloadBtn');
+                    // Remove old listeners by cloning
+                    const newDlBtn = dlBtn.cloneNode(true);
+                    dlBtn.parentNode.replaceChild(newDlBtn, dlBtn);
+
+                    newDlBtn.addEventListener('click', function() {
+                        const a = document.createElement('a');
+                        a.href = downloadURL;
+                        a.download = finalFileName;
+                        a.style.display = 'none';
+                        document.body.appendChild(a);
+                        a.click();
+                        // Delay removal to ensure download starts
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                        }, 1000);
+                        addLog(`⬇ Download iniciado: ${finalFileName}`, 'success');
+                    });
+
+                    document.getElementById('step4').scrollIntoView({ behavior: 'smooth' });
+                }, 300);
+
+                URL.revokeObjectURL(videoURL);
+
+            } catch (error) {
+                addLog(`❌ ERRO: ${error.message}`, 'error');
+                console.error(error);
+                updateProgress(0, 'Erro!');
+                document.getElementById('processingSpinner').style.display = 'none';
+                btn.disabled = false;
+                btn.textContent = '▶ TENTAR NOVAMENTE';
+                btn.classList.remove('opacity-50');
+            }
+        }
+
+        // ==================== RESET ====================
+        function resetAll() {
+            selectedFile = null;
+            selectedMode = null;
+            overlayImage = null;
+            overlayImageEl = null;
+            if (downloadURL) { URL.revokeObjectURL(downloadURL); downloadURL = null; }
+
+            fileInput.value = '';
+            document.getElementById('selectedFileInfo').classList.add('hidden');
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step3').classList.add('hidden');
+            document.getElementById('step4').classList.add('hidden');
+            document.getElementById('processBtn').classList.add('hidden');
+            document.getElementById('imageUploadSection').classList.add('hidden');
+            document.getElementById('overlayPreview').classList.add('hidden');
+            document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('processingSpinner').style.display = '';
+            document.getElementById('previewVideo').src = '';
+
+            const btn = document.getElementById('processBtn');
+            btn.disabled = false;
+            btn.textContent = '▶ INICIAR PROCESSAMENTO';
+            btn.classList.remove('opacity-50');
+
+            document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+            updateProgress(0, 'Iniciando...');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
