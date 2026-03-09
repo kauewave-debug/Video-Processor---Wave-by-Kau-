@@ -33,7 +33,6 @@
 <body class="text-gray-200">
 <div class="max-w-5xl mx-auto px-4 py-8">
 
-    <!-- Header -->
     <div class="text-center mb-8 fade-in">
         <div class="flex items-center justify-center gap-3 mb-2">
             <div class="w-3 h-3 rounded-full bg-indigo-500 pulse-dot"></div>
@@ -45,7 +44,6 @@
 
     <div class="glow-border rounded-2xl bg-[#0d0d1a] p-6 md:p-8">
 
-        <!-- Step 1 -->
         <div id="step1" class="fade-in">
             <div class="flex items-center gap-2 mb-4">
                 <span class="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">PASSO 1</span>
@@ -55,12 +53,11 @@
                 <input type="file" id="fileInput" accept="video/*,.mp4,.webm,.mov,.mkv,.avi" multiple class="hidden">
                 <div class="text-5xl mb-4">📁</div>
                 <p class="text-gray-300 font-medium mb-1">Clique aqui ou arraste vídeos</p>
-                <p class="text-gray-500 text-sm">MP4, WebM, MOV, MKV, AVI — Pode selecionar vários</p>
+                <p class="text-gray-500 text-sm">MP4, WebM, MOV, MKV, AVI — Pode selecionar vários simultaneamente</p>
             </div>
             <div id="fileList" class="mt-4 space-y-2"></div>
         </div>
 
-        <!-- Step 2 -->
         <div id="step2" class="hidden mt-8 fade-in">
             <div class="flex items-center gap-2 mb-4">
                 <span class="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">PASSO 2</span>
@@ -113,16 +110,14 @@
             </button>
         </div>
 
-        <!-- Step 3: Processing Area -->
         <div id="step3" class="hidden mt-8 fade-in">
             <div class="flex items-center gap-2 mb-4">
                 <span class="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">PASSO 3</span>
-                <span class="text-gray-400 text-sm">Processamento</span>
+                <span class="text-gray-400 text-sm">Processamento em Andamento</span>
             </div>
             <div id="processingJobs" class="space-y-4"></div>
         </div>
 
-        <!-- Results -->
         <div id="step4" class="hidden mt-8 fade-in">
             <div class="flex items-center gap-2 mb-4">
                 <span class="bg-green-500/20 text-green-400 text-xs font-bold px-2.5 py-1 rounded-full terminal-font">CONCLUÍDO</span>
@@ -148,7 +143,7 @@ let selectedFiles = [];
 let selectedMode = null;
 let overlayImageEl = null;
 let isProcessing = false;
-let completedResults = []; // {name, blob, url, origSize, finalSize, dims, mode}
+let completedResults = [];
 
 // ==================== FILE INPUT ====================
 const fileInput = document.getElementById('fileInput');
@@ -169,7 +164,7 @@ fileInput.addEventListener('change', (e) => {
 });
 
 function handleFilesSelect(files) {
-    // Reset everything when new files are uploaded
+    // Reset automatically when new files are chosen
     resetVisual();
     selectedFiles = Array.from(files).filter(f => f.type.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi)$/i.test(f.name));
     if (selectedFiles.length === 0) { alert('Nenhum arquivo de vídeo selecionado.'); return; }
@@ -210,7 +205,6 @@ function removeFile(index) {
 }
 
 function resetVisual() {
-    // Clean up old URLs
     completedResults.forEach(r => { if (r.url) URL.revokeObjectURL(r.url); });
     completedResults = [];
     selectedFiles = [];
@@ -228,6 +222,7 @@ function resetVisual() {
     document.getElementById('resultsArea').innerHTML = '';
     document.getElementById('downloadAllSection').classList.add('hidden');
     document.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+    
     const btn = document.getElementById('processBtn');
     btn.disabled = false;
     btn.textContent = '▶ INICIAR PROCESSAMENTO';
@@ -246,7 +241,6 @@ document.getElementById('overlayImageInput').addEventListener('change', (e) => {
     }
 });
 
-// ==================== MODE SELECTION ====================
 function selectMode(mode) {
     selectedMode = mode;
     document.querySelectorAll('.option-card').forEach(card => card.classList.toggle('selected', card.dataset.mode === mode));
@@ -254,9 +248,8 @@ function selectMode(mode) {
     document.getElementById('processBtn').classList.remove('hidden');
 }
 
-// ==================== TV FILTER ====================
+// ==================== FILTERS ====================
 function applyTVFilter(ctx, w, h) {
-    // Noise at 15%
     const noiseCanvas = document.createElement('canvas');
     noiseCanvas.width = w; noiseCanvas.height = h;
     const nCtx = noiseCanvas.getContext('2d');
@@ -276,29 +269,25 @@ function applyTVFilter(ctx, w, h) {
     }
     nCtx.putImageData(imgData, 0, 0);
     ctx.save(); ctx.globalAlpha=0.15; ctx.drawImage(noiseCanvas,0,0); ctx.restore();
-    // Gray tint
     ctx.save(); ctx.globalAlpha=0.07; ctx.fillStyle='#b4b4c3'; ctx.fillRect(0,0,w,h); ctx.restore();
-    // Scanlines
     ctx.save(); ctx.globalAlpha=0.04; ctx.fillStyle='#000';
     for (let y=0;y<h;y+=3) ctx.fillRect(0,y,w,1);
     ctx.restore();
-    // Interference
     if (Math.random()<0.12) {
         ctx.save(); ctx.globalAlpha=0.06;
         ctx.fillStyle='#dcdce6'; ctx.fillRect(0,Math.floor(Math.random()*h),w,Math.floor(Math.random()*3)+1);
         ctx.restore();
     }
-    // Vignette
     ctx.save(); ctx.globalAlpha=0.05;
     const grad=ctx.createRadialGradient(w/2,h/2,w*0.3,w/2,h/2,w*0.7);
     grad.addColorStop(0,'transparent'); grad.addColorStop(1,'rgba(0,0,0,1)');
     ctx.fillStyle=grad; ctx.fillRect(0,0,w,h); ctx.restore();
 }
 
-// ==================== IMAGE OVERLAY ====================
+// Opacidade mantida exatamente em 6% conforme solicitado
 function applyImageOverlay(ctx, w, h) {
     if (!overlayImageEl || !overlayImageEl.complete) return;
-    ctx.save(); ctx.globalAlpha = 0.06;
+    ctx.save(); ctx.globalAlpha = 0.06; 
     const imgW = overlayImageEl.naturalWidth, imgH = overlayImageEl.naturalHeight;
     if (imgW < w/2 || imgH < h/2) {
         const pat = ctx.createPattern(overlayImageEl, 'repeat');
@@ -309,7 +298,6 @@ function applyImageOverlay(ctx, w, h) {
     ctx.restore();
 }
 
-// ==================== HASH MODIFICATION ====================
 function applyHashModification(ctx, w, h) {
     for (let i=0;i<12;i++) {
         const x=Math.floor(Math.random()*w), y=Math.floor(Math.random()*h);
@@ -320,7 +308,7 @@ function applyHashModification(ctx, w, h) {
     }
 }
 
-// ==================== PROCESS A SINGLE VIDEO ====================
+// ==================== PROCESS ====================
 function processOneVideo(file, mode, jobId) {
     return new Promise(async (resolve) => {
         const logEl = document.getElementById('log-'+jobId);
@@ -366,10 +354,9 @@ function processOneVideo(file, mode, jobId) {
 
             log(`📐 Dimensões: ${origW}x${origH}`,'info');
             log(`⏱ Duração: ${duration.toFixed(1)}s`,'info');
-            log(`📦 Tamanho: ${origSizeMB} MB`,'info');
+            log(`📦 Tamanho original: ${origSizeMB} MB`,'info');
             progress(5,'Analisando...');
 
-            // Calculate dimensions
             let finalW = origW, finalH = origH;
             if (origW < 500 || origH < 500) {
                 if (origW < origH) { finalW=500; finalH=Math.round((origH/origW)*500); }
@@ -379,38 +366,28 @@ function processOneVideo(file, mode, jobId) {
             finalW = finalW%2===0?finalW:finalW+1;
             finalH = finalH%2===0?finalH:finalH+1;
 
-            // Calculate bitrate - only compress if >100MB
             const origFileSizeMB = file.size/(1024*1024);
             const needsSizeReduction = origFileSizeMB > 100;
             let targetBitsPerSec;
             if (needsSizeReduction) {
-                // Target 97MB to land between 95-100MB
                 targetBitsPerSec = Math.floor((97*8*1024*1024)/duration) - 128000;
                 targetBitsPerSec = Math.max(targetBitsPerSec, 500000);
                 log(`⚠️ Acima de 100MB. Comprimindo para ~97MB`,'warn');
             } else {
-                // Keep original quality
                 targetBitsPerSec = Math.min(Math.floor((origFileSizeMB*8*1024*1024)/duration)*1.1, 12000000);
             }
-            log(`🎯 Bitrate: ${(targetBitsPerSec/1000).toFixed(0)} kbps`,'info');
 
-            // Setup canvas
             const canvas = document.createElement('canvas');
             canvas.width = finalW; canvas.height = finalH;
             const ctx = canvas.getContext('2d', {willReadFrequently:true});
 
-            // Pre-load overlay
             if (mode==='image' && overlayImageEl) {
                 await new Promise(r => { if (overlayImageEl.complete) r(); else overlayImageEl.onload=r; });
-                log('🖼️ Imagem overlay carregada','success');
             }
 
             progress(10,'Iniciando captura...');
-
-            // Setup recording
             const stream = canvas.captureStream(30);
 
-            // Try audio
             let audioCtx=null;
             try {
                 audioCtx = new AudioContext();
@@ -422,7 +399,6 @@ function processOneVideo(file, mode, jobId) {
                 log('🔊 Áudio capturado','success');
             } catch(e) { log('⚠️ Vídeo será sem áudio','warn'); }
 
-            // Find mime type
             let mimeType = 'video/webm;codecs=vp9,opus';
             if (!MediaRecorder.isTypeSupported(mimeType)) {
                 mimeType='video/webm;codecs=vp8,opus';
@@ -444,11 +420,10 @@ function processOneVideo(file, mode, jobId) {
             log('🔴 Gravação iniciada...','info');
 
             video.currentTime = 0;
-            video.muted = false; // allow audio capture
+            video.muted = false; 
             progress(12,'Processando frames...');
 
             await video.play();
-
             let frameCount=0, lastLoggedPct=0;
 
             await new Promise(res => {
@@ -486,9 +461,9 @@ function processOneVideo(file, mode, jobId) {
             let finalSizeMB = (finalBlob.size/(1024*1024)).toFixed(2);
             log(`📦 Tamanho gerado: ${finalSizeMB} MB`,'info');
 
-            // If still >100MB, do second pass
+            // Segunda compressão caso passe de 100mb
             if (finalBlob.size > 100*1024*1024) {
-                log('⚠️ Ainda > 100MB! Segunda passada...','warn');
+                log('⚠️ Ainda > 100MB! Segunda passada de compressão...','warn');
                 const newBitrate = Math.floor(targetBitsPerSec * (95/parseFloat(finalSizeMB)));
 
                 const tmpVid = document.createElement('video');
@@ -524,7 +499,6 @@ function processOneVideo(file, mode, jobId) {
                 log(`📦 Novo tamanho: ${finalSizeMB} MB`,'success');
             }
 
-            // Generate download URL
             const dlURL = URL.createObjectURL(finalBlob);
             const baseName = file.name.replace(/\.[^.]+$/,'');
             const finalFileName = `${baseName}_processed.mp4`;
@@ -548,7 +522,6 @@ function processOneVideo(file, mode, jobId) {
 
         } catch(error) {
             log(`❌ ERRO: ${error.message}`,'error');
-            console.error(error);
             progress(0,'Erro!');
             statusEl.innerHTML = '<span class="text-red-400 font-bold">❌ Erro</span>';
             resolve(null);
@@ -556,7 +529,7 @@ function processOneVideo(file, mode, jobId) {
     });
 }
 
-// ==================== CREATE JOB UI ====================
+// ==================== UI JOBS ====================
 function createJobUI(file, index) {
     const jobId = 'job'+index;
     const sizeMB = (file.size/(1024*1024)).toFixed(2);
@@ -588,7 +561,7 @@ function createJobUI(file, index) {
     return div;
 }
 
-// ==================== START ALL ====================
+// ==================== PROCESSAMENTO SIMULTÂNEO ====================
 async function startAllProcessing() {
     if (selectedFiles.length===0) return alert('Selecione pelo menos um vídeo.');
     if (!selectedMode) return alert('Escolha um modo de processamento.');
@@ -601,30 +574,30 @@ async function startAllProcessing() {
     btn.textContent = '⏳ PROCESSANDO...';
     btn.classList.add('opacity-50');
 
-    // Show step 3
     document.getElementById('step3').classList.remove('hidden');
     const jobsContainer = document.getElementById('processingJobs');
     jobsContainer.innerHTML = '';
-
-    // Create job UIs
+    
     selectedFiles.forEach((f, i) => jobsContainer.appendChild(createJobUI(f, i)));
-
     setTimeout(() => document.getElementById('step3').scrollIntoView({behavior:'smooth'}), 100);
 
-    // Process sequentially to avoid memory issues (one video playing at a time)
     completedResults = [];
-    for (let i=0; i<selectedFiles.length; i++) {
-        const result = await processOneVideo(selectedFiles[i], selectedMode, 'job'+i);
+    
+    // Processamento Simultâneo Seguro usando Promise.all
+    const promises = selectedFiles.map(async (file, i) => {
+        const result = await processOneVideo(file, selectedMode, 'job'+i);
         if (result) {
             completedResults.push(result);
-            addResultCard(result, completedResults.length-1);
+            addResultCard(result, completedResults.indexOf(result));
         }
-    }
+    });
+
+    await Promise.all(promises);
 
     isProcessing = false;
     dropZone.classList.remove('disabled');
     btn.disabled = false;
-    btn.textContent = '▶ INICIAR PROCESSAMENTO';
+    btn.textContent = '▶ INICIAR NOVO PROCESSAMENTO';
     btn.classList.remove('opacity-50');
 
     if (completedResults.length > 1) {
@@ -632,7 +605,7 @@ async function startAllProcessing() {
     }
 }
 
-// ==================== ADD RESULT CARD ====================
+// ==================== MOSTRAR OS QUE FICAM PRONTOS ====================
 function addResultCard(result, index) {
     document.getElementById('step4').classList.remove('hidden');
     const area = document.getElementById('resultsArea');
@@ -650,7 +623,7 @@ function addResultCard(result, index) {
                     </div>
                 </div>
             </div>
-            <button onclick="downloadSingle(${index})" class="py-2.5 px-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold rounded-lg transition-all terminal-font text-xs cursor-pointer whitespace-nowrap">
+            <button onclick="downloadSingle('${result.url}', '${result.name}')" class="py-2.5 px-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold rounded-lg transition-all terminal-font text-xs cursor-pointer whitespace-nowrap">
                 ⬇ BAIXAR .MP4
             </button>
         </div>
@@ -658,14 +631,11 @@ function addResultCard(result, index) {
     area.appendChild(div);
 }
 
-// ==================== DOWNLOAD SINGLE ====================
-function downloadSingle(index) {
-    const result = completedResults[index];
-    if (!result || !result.url) { alert('Erro: arquivo não encontrado.'); return; }
-    forceDownload(result.url, result.name);
+function downloadSingle(url, filename) {
+    if (!url) { alert('Erro: arquivo não encontrado.'); return; }
+    forceDownload(url, filename);
 }
 
-// ==================== FORCE DOWNLOAD ====================
 function forceDownload(url, filename) {
     const a = document.createElement('a');
     a.href = url;
@@ -673,11 +643,10 @@ function forceDownload(url, filename) {
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    // Important: delay removal so browser starts download
     setTimeout(() => { document.body.removeChild(a); }, 3000);
 }
 
-// ==================== DOWNLOAD ALL AS ZIP ====================
+// ==================== BAIXAR TODOS ZIP ====================
 async function downloadAllAsZip() {
     const btn = document.getElementById('downloadAllBtn');
     btn.disabled = true;
@@ -686,7 +655,6 @@ async function downloadAllAsZip() {
     try {
         const zip = new JSZip();
         for (const result of completedResults) {
-            // Fetch blob from URL
             const response = await fetch(result.url);
             const blob = await response.blob();
             zip.file(result.name, blob);
